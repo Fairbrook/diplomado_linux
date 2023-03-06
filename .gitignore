@@ -1,0 +1,4 @@
+Session*
+*.out
+out/
+.ccls-cache/
