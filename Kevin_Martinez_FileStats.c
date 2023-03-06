@@ -29,7 +29,7 @@ int main(int argc, char *argv[]){
     // stops the program in case of error
     struct stat fileInfo;
     char *path = argv[1];
-    int stat_exit_value = stat(path, &fileInfo);
+    int stat_exit_value = lstat(path, &fileInfo);
     if(stat_exit_value != EXIT_SUCCESS){
         perror("Error while opening the file");
         return EXIT_FAILURE;
