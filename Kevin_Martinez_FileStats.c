@@ -91,6 +91,7 @@ unsigned count_alphanumeric(char*path){
         }
         character = getc(fd);
     }
+    fclose(fd);
     return counter;
 }
 
@@ -102,7 +103,9 @@ unsigned count_alphanumeric(char*path){
  * c character
  * b block
  * l link
+ * p pipe
  * s socket
+ * ! unkwon
  * */
 char mode_to_type(mode_t mode){
     if (S_ISREG(mode)){
@@ -120,7 +123,13 @@ char mode_to_type(mode_t mode){
     if (S_ISLNK(mode)){
         return 'l';
     }
-    return 's';
+    if(S_ISFIFO(mode)){
+        return 'p';
+    }
+    if(S_ISSOCK(mode)){
+        return 's';
+    }
+    return '!';
 }
 
 /*
