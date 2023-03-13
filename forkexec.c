@@ -18,7 +18,7 @@ int spawn(char *program, char **arg_list) {
 }
 int main() {
   char *arg_list[] = {"ls\0", "-l\0", "/\0", NULL};
-  spawn("ls", arg_list);
+  spawn("lsad", arg_list);
   printf("done with main program\n");
   return 0;
 }
