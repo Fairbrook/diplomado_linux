@@ -50,5 +50,10 @@ char** psuedo_to_real(int argc, char *argv[]){
         uptime[1] = "-p";
         return uptime;
     }
+    if(strcmp(psuedo, "personal")==0){
+        char **top = allocate_array(2);
+        top[0] = "top";
+        return top;
+    }
     return allocate_array(1);
 }
