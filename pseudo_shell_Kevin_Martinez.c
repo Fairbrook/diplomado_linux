@@ -16,6 +16,12 @@ int main(int argc, char *argv[]){
         printf("Try fecha, quiensoy, tiempo or personal\n");
         return EXIT_FAILURE;
     }
+    int pid = fork();
+    if(pid!=0){
+        int child_status;
+        waitpid(pid, &child_status, 0);
+        return child_status;
+    }
     int exec_return = execvp(command[0], command);
     if(exec_return == -1){
         perror("Error al ejecutar el comando");
