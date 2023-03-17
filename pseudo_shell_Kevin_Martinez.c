@@ -58,9 +58,10 @@ char** psuedo_to_real(int argc, char *argv[]){
         return uptime;
     }
     if(strcmp(psuedo, "personal")==0){
-        char **top = allocate_array(2);
-        top[0] = "top";
-        return top;
+        char **personal = allocate_array(3);
+        personal[0] = "./out/Kevin_Martinez_FileStats";
+        personal[1] = "./brun.sh";
+        return personal;
     }
     return allocate_array(1);
 }

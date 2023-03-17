@@ -21,7 +21,9 @@ int parent_is_dir(char *);
 int get_mode(char *);
 int cp_dir(char *, char *);
 int custom_sleep(int, char **);
-int ls(int, char**);
+int ls(int, char **);
+int cat(int, char **);
+int custom_mkdir(int, char **);
 char *concat_path(char *, char *);
 
 int main(int argc, char *argv[]) {
@@ -38,9 +40,10 @@ int main(int argc, char *argv[]) {
   int command_error = errno;
   free(basename_dup);
   if (command_return == EXIT_NOT_FOUND) {
+    printf("Invalid command\n");
     return EXIT_FAILURE;
   }
-  if (command_return == EXIT_FAILURE) {
+  if (command_return != EXIT_SUCCESS) {
     errno = command_error;
     perror("Error");
     return EXIT_FAILURE;
@@ -57,6 +60,12 @@ int command_executor(char *command, int argc, char *argv[]) {
   }
   if (strcmp("ls", command) == 0) {
     return ls(argc, argv);
+  }
+  if (strcmp("cat", command) == 0) {
+    return cat(argc, argv);
+  }
+  if (strcmp("mkdir", command) == 0) {
+    return custom_mkdir(argc, argv);
   }
   return EXIT_NOT_FOUND;
 }
@@ -120,10 +129,56 @@ int ls(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-int cat(int argc, char *argv[]){
-    if(argc != 2){
-         
-    }
+int cat(int argc, char *argv[]) {
+  if (argc != 2) {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+  char *input = argv[1];
+  int is_input_file = is_file(input);
+  if (is_input_file == -1) {
+    return EXIT_FAILURE;
+  }
+  if (is_input_file == 0) {
+    errno = ENOENT;
+    return EXIT_FAILURE;
+  }
+  char buffer[4096];
+  FILE *finput = fopen(input, "r");
+  if (finput == NULL) {
+    return EXIT_FAILURE;
+  }
+  while (feof(finput) == 0) {
+    fread(buffer, sizeof(char), sizeof(buffer), finput);
+    printf("%s", buffer);
+  }
+  fclose(finput);
+  return EXIT_SUCCESS;
+}
+
+int custom_mkdir(int argc, char *argv[]) {
+  if (argc != 2) {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+  char *input = argv[1];
+  int is_input_dir = is_dir(input);
+  if (is_input_dir == 0) {
+    return EXIT_SUCCESS;
+  }
+  char *path_dup = strdup(input);
+  char *parent = dirname(path_dup);
+  int is_parent_dir = is_dir(parent);
+  mode_t parent_mode = get_mode(parent);
+  free(path_dup);
+  if (is_parent_dir == -1) {
+    return EXIT_FAILURE;
+  }
+  if (is_parent_dir == 0) {
+    errno = ENOENT;
+    return EXIT_FAILURE;
+  }
+  return mkdir(input, parent_mode);
 }
 
 int cp_dir(char *source, char *dest) {
