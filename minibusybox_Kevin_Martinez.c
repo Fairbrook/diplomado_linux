@@ -16,6 +16,7 @@ int is_file(char *);
 int is_dir(char *);
 int copy_file(char *, char *);
 int cp_file(char *, char *);
+int cp_link(char *, char *);
 int is_dir_empty(char *);
 int parent_is_dir(char *);
 int get_mode(char *);
@@ -148,9 +149,14 @@ int cat(int argc, char *argv[]) {
   if (finput == NULL) {
     return EXIT_FAILURE;
   }
+  int bytes_read = 0;
   while (feof(finput) == 0) {
-    fread(buffer, sizeof(char), sizeof(buffer), finput);
-    printf("%s", buffer);
+    int bytes_read = fread(buffer, sizeof(char), sizeof(buffer), finput);
+    if (ferror(finput) != 0) {
+      errno = EIO;
+      return EXIT_FAILURE;
+    }
+    fwrite(buffer, sizeof(char), bytes_read, stdout);
   }
   fclose(finput);
   return EXIT_SUCCESS;
@@ -163,8 +169,9 @@ int custom_mkdir(int argc, char *argv[]) {
   }
   char *input = argv[1];
   int is_input_dir = is_dir(input);
-  if (is_input_dir == 0) {
-    return EXIT_SUCCESS;
+  if (is_input_dir != -1) {
+    errno = EEXIST;
+    return EXIT_FAILURE;
   }
   char *path_dup = strdup(input);
   char *parent = dirname(path_dup);
@@ -206,26 +213,31 @@ int cp_dir(char *source, char *dest) {
     }
   }
 
+  struct dirent *dir_entry;
   DIR *dir = opendir(source);
-  struct dirent *file;
-  while ((file = readdir(dir)) != NULL) {
-    if (strcmp(".", file->d_name) == 0 || strcmp("..", file->d_name) == 0) {
+  while ((dir_entry = readdir(dir)) != NULL) {
+    if (strcmp(".", dir_entry->d_name) == 0 ||
+        strcmp("..", dir_entry->d_name) == 0) {
       continue;
     }
     int cp_return = 0;
     int cp_error = 0;
-    char *full_path = concat_path(source, file->d_name);
-    if (file->d_type == DT_DIR) {
-      char *dest_with_folder = concat_path(dest, file->d_name);
+    char *full_path = concat_path(source, dir_entry->d_name);
+    if (dir_entry->d_type == DT_DIR) {
+      char *dest_with_folder = concat_path(dest, dir_entry->d_name);
       cp_return = cp_dir(full_path, dest_with_folder);
       cp_error = errno;
       free(dest_with_folder);
+    } else if (dir_entry->d_type == DT_LNK) {
+      cp_return = cp_link(full_path, dest);
+      cp_error = errno;
     } else {
       cp_return = cp_file(full_path, dest);
       cp_error = errno;
     }
     free(full_path);
     if (cp_return == EXIT_FAILURE) {
+      closedir(dir);
       errno = cp_error;
       return cp_return;
     }
@@ -240,12 +252,13 @@ int cp_file(char *source, char *dest) {
     return EXIT_FAILURE;
   }
   if (source_is_file == 0) {
-    errno = EISDIR;
+    errno = ENONET;
     return EXIT_FAILURE;
   }
   int dest_is_dir = is_dir(dest);
   if (dest_is_dir == -1) {
     if (parent_is_dir(dest) != 1) {
+      errno = ENONET;
       return EXIT_FAILURE;
     }
   }
@@ -263,6 +276,24 @@ int cp_file(char *source, char *dest) {
   return copy_file(source, dest);
 }
 
+int cp_link(char *source, char *dest) {
+  char buffer[PATH_MAX];
+  int bytes_read = 0;
+  if ((bytes_read = readlink(source, buffer, sizeof(buffer))) == -1) {
+    return EXIT_FAILURE;
+  }
+  buffer[bytes_read] = '\0';
+  char *source_dup = strdup(source);
+  char *file_name = basename(source_dup);
+  char *full_dest = concat_path(dest, file_name);
+  free(source_dup);
+  if (symlink(buffer, full_dest) == -1) {
+    return EXIT_FAILURE;
+  }
+  free(full_dest);
+  return EXIT_SUCCESS;
+}
+
 int copy_file(char *source, char *dest) {
   char buffer[4096];
   FILE *fsource = fopen(source, "r");
@@ -275,14 +306,26 @@ int copy_file(char *source, char *dest) {
   }
   while (feof(fsource) == 0) {
     size_t written = fread(buffer, sizeof(char), sizeof(buffer), fsource);
+    if (ferror(fsource) != 0) {
+      errno = EIO;
+      return EXIT_FAILURE;
+    }
     fwrite(buffer, sizeof(char), written, fdest);
+    if (ferror(fdest) != 0) {
+      errno = EIO;
+      return EXIT_FAILURE;
+    }
   }
   fclose(fsource);
   fclose(fdest);
   struct stat source_stat;
   stat(source, &source_stat);
-  chmod(dest, source_stat.st_mode);
-  chown(dest, source_stat.st_uid, source_stat.st_gid);
+  if (chmod(dest, source_stat.st_mode) == -1) {
+    return EXIT_FAILURE;
+  }
+  if (chown(dest, source_stat.st_uid, source_stat.st_gid) == -1) {
+    return EXIT_FAILURE;
+  }
   return EXIT_SUCCESS;
 }
 
