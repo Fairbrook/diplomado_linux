@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/wait.h>
 char** psuedo_to_real(int, char *[]);
 
 int main(int argc, char *argv[]){
