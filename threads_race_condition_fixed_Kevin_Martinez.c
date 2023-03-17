@@ -8,11 +8,11 @@ pthread_mutex_t counter_mutex = PTHREAD_MUTEX_INITIALIZER;
 void *thread_func(void *args) {
 
   int i;
-  pthread_mutex_lock(&counter_mutex);
   for (i = 0; i < 10000000; i++) {
+    pthread_mutex_lock(&counter_mutex);
     counter++;
+    pthread_mutex_unlock(&counter_mutex);
   }
-  pthread_mutex_unlock(&counter_mutex);
   return NULL;
 }
 

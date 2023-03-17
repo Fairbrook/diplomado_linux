@@ -20,6 +20,8 @@ int is_dir_empty(char *);
 int parent_is_dir(char *);
 int get_mode(char *);
 int cp_dir(char *, char *);
+int custom_sleep(int, char **);
+int ls(int, char**);
 char *concat_path(char *, char *);
 
 int main(int argc, char *argv[]) {
@@ -50,6 +52,12 @@ int command_executor(char *command, int argc, char *argv[]) {
   if (strcmp("cp", command) == 0) {
     return cp(argc, argv);
   }
+  if (strcmp("sleep", command) == 0) {
+    return custom_sleep(argc, argv);
+  }
+  if (strcmp("ls", command) == 0) {
+    return ls(argc, argv);
+  }
   return EXIT_NOT_FOUND;
 }
 
@@ -63,6 +71,59 @@ int cp(int argc, char *argv[]) {
     return cp_dir(argv[2], argv[3]);
   }
   return cp_file(argv[1], argv[2]);
+}
+
+int custom_sleep(int argc, char *argv[]) {
+  if (argc != 2) {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+  errno = 0;
+  char *rest;
+  int seconds = strtol(argv[1], &rest, 10);
+  if (errno != 0) {
+    return EXIT_FAILURE;
+  }
+  if (rest != NULL && rest[0] != '\0') {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+  sleep(seconds);
+  return EXIT_SUCCESS;
+}
+
+int ls(int argc, char *argv[]) {
+  char *source = ".";
+  if (argc > 2) {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+  if (argc == 2) {
+    source = argv[1];
+  }
+  int is_source_dist = is_dir(source);
+  if (is_source_dist == -1) {
+    return EXIT_FAILURE;
+  }
+  if (is_source_dist == 0) {
+    errno = ENOTDIR;
+    return EXIT_FAILURE;
+  }
+  DIR *dir = opendir(source);
+  struct dirent *file;
+  while ((file = readdir(dir)) != NULL) {
+    if (strcmp(".", file->d_name) == 0 || strcmp("..", file->d_name) == 0) {
+      continue;
+    }
+    printf("%s\n", file->d_name);
+  }
+  return EXIT_SUCCESS;
+}
+
+int cat(int argc, char *argv[]){
+    if(argc != 2){
+         
+    }
 }
 
 int cp_dir(char *source, char *dest) {
@@ -104,8 +165,7 @@ int cp_dir(char *source, char *dest) {
       cp_return = cp_dir(full_path, dest_with_folder);
       cp_error = errno;
       free(dest_with_folder);
-    }
-    if (file->d_type == DT_REG) {
+    } else {
       cp_return = cp_file(full_path, dest);
       cp_error = errno;
     }
@@ -181,10 +241,12 @@ int get_mode(char *path) {
 
 int is_file(char *path) {
   struct stat file_stat;
-  if (stat(path, &file_stat) == -1) {
+  if (lstat(path, &file_stat) == -1) {
     return -1;
   }
-  if (S_ISREG(file_stat.st_mode)) {
+  if (S_ISREG(file_stat.st_mode) || S_ISBLK(file_stat.st_mode) ||
+      S_ISCHR(file_stat.st_mode) || S_ISFIFO(file_stat.st_mode) ||
+      S_ISLNK(file_stat.st_mode)) {
     return 1;
   }
   return 0;
