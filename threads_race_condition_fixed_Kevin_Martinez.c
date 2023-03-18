@@ -3,14 +3,17 @@
 #include <unistd.h>
 
 int counter = 0;
+// Mutex for excluding thread increments
 pthread_mutex_t counter_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void *thread_func(void *args) {
-
   int i;
   for (i = 0; i < 10000000; i++) {
+    // Lock for locking the mutex
+    // Note: This makes the threads much slower than secuential
     pthread_mutex_lock(&counter_mutex);
     counter++;
+    // Free the lock for the other thread to make the lock
     pthread_mutex_unlock(&counter_mutex);
   }
   return NULL;
