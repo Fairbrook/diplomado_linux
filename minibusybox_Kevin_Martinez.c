@@ -494,7 +494,7 @@ int copy_file(char *source, char *dest) {
   fclose(fsource);
   fclose(fdest);
 
-  // Tries to set the same owner and mode than the original file
+  // Tries to set the same owner and mode as the original file
   struct stat source_stat;
   stat(source, &source_stat);
   chmod(dest, source_stat.st_mode);
