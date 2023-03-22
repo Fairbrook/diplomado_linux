@@ -95,13 +95,19 @@ int command_executor(char *command, int argc, char *argv[]) {
 
 // Copy  command function
 int cp(int argc, char *argv[]) {
-  // Checks if the -r flag is set
-  int r_option = strcmp("-r", argv[1]) == 0;
   // Validates the number of arguments
-  if (argc < 3 || argc > 4 || (argc == 4 && !r_option)) {
+  if (argc < 3 || argc > 4) {
     errno = EINVAL;
     return EXIT_FAILURE;
   }
+
+  // Checks if the -r flag is set
+  int r_option = strcmp("-r", argv[1]) == 0;
+  if (argc == 4 && !r_option) {
+    errno = EINVAL;
+    return EXIT_FAILURE;
+  }
+
   // Depending on if -r is set calls to diferent functions
   if (r_option) {
     return cp_dir(argv[2], argv[3]);
@@ -121,6 +127,10 @@ int custom_sleep(int argc, char *argv[]) {
   char *rest;
   int seconds = strtol(argv[1], &rest, 10);
   if (errno != 0) {
+    return EXIT_FAILURE;
+  }
+  if (seconds < 0) {
+    errno = EINVAL;
     return EXIT_FAILURE;
   }
   // If the input could not be converted as a whole then mark the input as
@@ -298,11 +308,11 @@ int cp_dir(char *source, char *dest) {
   // Validate sthe source is a directory
   int source_is_dir = is_dir(source);
   if (source_is_dir == -1) {
-    printf("'%s' does not exists\n", source);
+    printf("Source directory '%s' does not exists\n", source);
     return EXIT_FAILURE;
   }
   if (source_is_dir == 0) {
-    printf("'%s' is not a directory\n", source);
+    printf("Source '%s' is not a directory\n", source);
     errno = ENOTDIR;
     return EXIT_FAILURE;
   }
@@ -311,14 +321,16 @@ int cp_dir(char *source, char *dest) {
   int dest_is_dir = is_dir(dest);
   if (dest_is_dir == 1) {
     if (is_dir_empty(dest) == 0) {
+      printf("Destination '%s' is not a empty\n", dest);
       errno = ENOTEMPTY;
       return EXIT_FAILURE;
     }
   }
 
-  // If the destination exists but is not a file
+  // If the destination exists but is a file
   // return error
   if (dest_is_dir == 0) {
+    printf("'%s' already exists\n", dest);
     errno = EEXIST;
     return EXIT_FAILURE;
   }
@@ -382,11 +394,9 @@ int cp_dir(char *source, char *dest) {
 int cp_file(char *source, char *dest) {
   // Validates the source is a file
   int source_is_file = is_file(source);
-  if (source_is_file == -1) {
-    return EXIT_FAILURE;
-  }
-  if (source_is_file == 0) {
-    errno = ENONET;
+  if (source_is_file != 1) {
+    printf("File '%s' not found\n", source);
+    errno = ENOENT;
     return EXIT_FAILURE;
   }
 
@@ -395,6 +405,7 @@ int cp_file(char *source, char *dest) {
   if (dest_is_dir == -1) {
     // If the destination is dos not exists checks the rest of the path exists
     if (parent_is_dir(dest) != 1) {
+      printf("Destination '%s' is invalid\n", dest);
       errno = ENONET;
       return EXIT_FAILURE;
     }
@@ -486,12 +497,8 @@ int copy_file(char *source, char *dest) {
   // Tries to set the same owner and mode than the original file
   struct stat source_stat;
   stat(source, &source_stat);
-  if (chmod(dest, source_stat.st_mode) == -1) {
-    return EXIT_FAILURE;
-  }
-  if (chown(dest, source_stat.st_uid, source_stat.st_gid) == -1) {
-    return EXIT_FAILURE;
-  }
+  chmod(dest, source_stat.st_mode);
+  chown(dest, source_stat.st_uid, source_stat.st_gid);
   return EXIT_SUCCESS;
 }
 
