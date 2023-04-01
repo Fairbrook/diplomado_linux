@@ -125,7 +125,7 @@ int custom_sleep(int argc, char *argv[]) {
   // Tries to convert the input to integer
   errno = 0;
   char *rest;
-  int seconds = strtol(argv[1], &rest, 10);
+  float seconds = strtof(argv[1], &rest);
   if (errno != 0) {
     return EXIT_FAILURE;
   }
@@ -139,7 +139,7 @@ int custom_sleep(int argc, char *argv[]) {
     errno = EINVAL;
     return EXIT_FAILURE;
   }
-  sleep(seconds);
+  usleep((int)(seconds *1000000));
   return EXIT_SUCCESS;
 }
 
@@ -319,13 +319,13 @@ int cp_dir(char *source, char *dest) {
 
   // Validates the destination is a directory
   int dest_is_dir = is_dir(dest);
-  if (dest_is_dir == 1) {
-    if (is_dir_empty(dest) == 0) {
-      printf("Destination '%s' is not a empty\n", dest);
-      errno = ENOTEMPTY;
-      return EXIT_FAILURE;
-    }
-  }
+  // if (dest_is_dir == 1) {
+  //   if (is_dir_empty(dest) == 0) {
+  //     printf("Destination '%s' is not a empty\n", dest);
+  //     errno = ENOTEMPTY;
+  //     return EXIT_FAILURE;
+  //   }
+  // }
 
   // If the destination exists but is a file
   // return error
