@@ -2,3 +2,4 @@ Session*
 *.out
 out/
 .ccls-cache/
+test*
