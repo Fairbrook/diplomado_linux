@@ -1,0 +1,63 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/pinctrl/am33xx.h>
+
+// /proc/device-tree/chosen/overlays
+&{/chosen} {
+    overlays{
+        myoverlay.kernel = __TIMESTAMP__;
+    };
+};
+
+&{/} {
+    leds {
+        extra_led0 {
+            compatible = "gpio-leds";
+            label = "custom:red:extern0";
+            color = <LED_COLOR_ID_RED>;
+            gpios = <&gpio1 28 GPIO_ACTIVE_HIGH>;
+            default-state="off";
+            linux,default-trigger="default-on";
+        };
+    };
+    // Configure pwm led
+    pwmleds {
+        compatible = "pwm-leds";
+        led1 {
+            label = "custom:red:pwm0";
+            pwms = <&ecap0 0 1000000>;
+            max-brightness = <255>;
+        };
+    };
+};
+
+// Enable and configure pwm
+&epwmss0{
+    status="okay";
+	ecap0: pwm@100 {
+		status = "okay";
+		pinctrl-names = "default";
+		pinctrl-0 = <&extra_pwm>;
+        linux,default-trigger="default-on";
+        #pwm-cells=<2>;
+	};
+};
+
+// Registeres pins an configuration
+&am33xx_pinmux {
+    extra_leds: extra_leds {
+        pinctrl-single,pins = <
+            AM33XX_PADCONF(AM335X_PIN_GPMC_BEN1, PIN_OUTPUT_PULLDOWN, MUX_MODE7)
+        >;
+    };
+    extra_pwm: extra_pwm {
+        pinctrl-single,pins = <
+        	AM33XX_PADCONF(AM335X_PIN_ECAP0_IN_PWM0_OUT, 0x0, MUX_MODE0)
+        >;
+    };
+};
+
+
