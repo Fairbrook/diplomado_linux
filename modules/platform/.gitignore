@@ -2,6 +2,7 @@
 *.mod*
 *.o
 *.cmd
+*.dtb
 linked_list_user
 modules*
 Module*

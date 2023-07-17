@@ -4,7 +4,6 @@
 #include <linux/of_address.h>
 #include <linux/gpio/consumer.h>
 #define PORT_LEN 4
-#define PARALLEL_MASK 0x80
 
 static struct class *parallel_class;
 static struct device *parallel_device;
@@ -15,31 +14,44 @@ struct parallel_private_data{
 };
 
 static void set_position(char *reg, unsigned pos, unsigned value ){
-    *reg |= (value % 2) << pos;
+    unsigned mask = 0x1 << pos;
+    if(value == 0) {
+        *reg &= ~mask;
+        return;
+    }
+    *reg |= mask;
 }
 
+
 static unsigned get_position(char *reg, unsigned pos){
-    return (*reg) & 0x1 << pos;
+    return ((*reg) & 0x1 << pos) >> pos;
+}
+
+static void apply_state(struct parallel_private_data *private_data){
+    int i = 0;
+    for(i = 0; i < PORT_LEN; i++){
+         gpiod_set_value(private_data->devices[i], get_position(&private_data->value, i));
+    }
 }
 
 static ssize_t parse_and_set_led(unsigned index, struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
     unsigned value;
     int ret;
     struct parallel_private_data *dev_data = dev_get_drvdata(dev);
-    ret = kstrtouint_from_user(buf, count, 0, &value);
+    ret = kstrtouint(buf, 0, &value);
     if (ret) {
         dev_err(dev, "Bad formated input, expected number");
         return ret;
     }
     set_position(&dev_data->value, index, value);
+    apply_state(dev_data);
 
-    return 0;
+    return count;
 }
 
 static ssize_t parse_and_get_led(unsigned index, struct device *dev, struct device_attribute *attr, char *buf){
     struct parallel_private_data *dev_data = dev_get_drvdata(dev);
-    snprintf(buf, PAGE_SIZE, "%u", get_position(&dev_data->value, index));
-    return 0;
+    return snprintf(buf, PAGE_SIZE, "%u\n", get_position(&dev_data->value, index));
 }
 
 static ssize_t led0_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
@@ -75,19 +87,19 @@ static ssize_t value_store(struct device *dev, struct device_attribute *attr, co
     unsigned value;
     int ret;
     struct parallel_private_data *dev_data = dev_get_drvdata(dev);
-    ret = kstrtouint_from_user(buf, count, 0, &value);
+    ret = kstrtouint(buf, 0, &value);
     if (ret) {
         dev_err(dev, "Bad formated input, expected number");
         return ret;
     }
     dev_data->value = value;
-    return 0;
+    apply_state(dev_data);
+    return count;
 }
 
 static ssize_t value_show(struct device *dev, struct device_attribute *attr, char *buf){
     struct parallel_private_data *dev_data = dev_get_drvdata(dev);
-    snprintf(buf, PAGE_SIZE, "%u", dev_data->value);
-    return 0;
+    return snprintf(buf, PAGE_SIZE, "%u\n", dev_data->value);
 }
 
 static DEVICE_ATTR_RW(led0);
