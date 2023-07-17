@@ -1,5 +1,7 @@
 *.ko
 *.mod*
+*.o
+*.cmd
 linked_list_user
 modules*
 Module*
