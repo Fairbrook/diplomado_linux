@@ -1,1 +1,0 @@
-cmd_/project/kamv_linked_list.ko := arm-linux-gnueabihf-ld -r  -EL -z noexecstack   --build-id=sha1  -T scripts/module.lds -o /project/kamv_linked_list.ko /project/kamv_linked_list.o /project/kamv_linked_list.mod.o;  true
