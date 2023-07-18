@@ -191,7 +191,7 @@ static ssize_t demo_show(struct device *dev, struct device_attribute *attr,
                          char *buf) {
   struct parallel_private_data *dev_data = dev_get_drvdata(dev);
   int ret;
-  ret = snprintf(buf, 4, "%s", dev_data->task == NULL ? "off" : "on");
+  ret = snprintf(buf, 5, "%s\n", dev_data->task == NULL ? "off" : "on");
   return ret;
 }
 
