@@ -17,11 +17,14 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&parallel_leds>;
         compatible = "kamv,parallel-leds";
-        label = "port0";
-        led-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>,
-                    <&gpio1 28 GPIO_ACTIVE_HIGH>,
-                    <&gpio0 31 GPIO_ACTIVE_HIGH>,
-                    <&gpio1 18 GPIO_ACTIVE_HIGH>;
+
+        port@0{
+            label = "port0";
+            led-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>,
+                <&gpio1 28 GPIO_ACTIVE_HIGH>,
+                <&gpio0 31 GPIO_ACTIVE_HIGH>,
+                <&gpio1 18 GPIO_ACTIVE_HIGH>;
+        };
     };
 };
 
