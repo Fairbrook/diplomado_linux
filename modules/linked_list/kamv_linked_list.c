@@ -55,7 +55,7 @@ static long int list_m_ioctl (struct file *filp, unsigned int cmd, unsigned long
   return -ENOTTY;
 }
 
-    
+
 static ssize_t list_m_write(struct file *file, const char __user * buf, size_t lbuf, loff_t * ppos) {
     struct kamv_node *new_node;
     ssize_t ret = 0;
@@ -63,24 +63,32 @@ static ssize_t list_m_write(struct file *file, const char __user * buf, size_t l
     unsigned long magic;
 	pr_info("Linked list write\n");
 
-    kbuf = kmalloc(sizeof(lbuf), GFP_KERNEL);
+    // Allocate memory for temprary buffer
+    kbuf = kmalloc(lbuf, GFP_KERNEL);
     if(kbuf == NULL) return -ENOMEM;
+    // Copy the information from user space to kernel space
     if(copy_from_user(kbuf, buf, lbuf)) {
         kfree(kbuf);
         return -EFAULT;
     }
-        
+
     // Could have used kstrtoul_from_user
+    // Transform received string to unsigned
     ret = kstrtoul(kbuf, 0, &magic);
+    // Release the buffer used for the convertion
     kfree(kbuf);
     kbuf = NULL;
     if(ret < 0) return ret;
 
+    // Allocate memory for the new node
     new_node = kmalloc(sizeof(struct kamv_node), GFP_KERNEL);
     if(new_node == NULL) return -ENOMEM;
     new_node->magic = magic;
+    // Init new node (points to itself)
     INIT_LIST_HEAD(&new_node->list);
+    // Add the new node to the end of the list
     list_add_tail(&new_node->list, &head_node);
+    // Returns the lenght of the buffer to indicate success
     *ppos += lbuf;
     return lbuf;
 }
@@ -90,16 +98,23 @@ static ssize_t list_m_read(struct file *file, char __user * buf, size_t lbuf, lo
     size_t len;
     int ret;
 	pr_info("Linked list read\n");
+    // Validate if the list is empty
     if(list_empty(&head_node)) return 0;
+    // This is in case some program (like cat) tries to read the whole file
+    // with multiple reads
     if(*ppos != 0) return 0;
 
+    // Alocates the memory for the buffer making the convertion from number 
+    // to string
     len = lbuf;
     if(len > MAX_READ_SIZE) len = MAX_READ_SIZE;
     kbuf = kmalloc(len, GFP_KERNEL);
     if(kbuf == NULL) return -ENOMEM;
     // Could have writen directly to user buffer?
     len = snprintf(kbuf, lbuf, "%lu", list_last_entry(&head_node, struct kamv_node, list)->magic);
-    ret = copy_to_user(buf, kbuf, len); 
+    // Copy the result to user space
+    ret = copy_to_user(buf, kbuf, len);
+    // Free the temprary buffer
     kfree(kbuf);
     if(ret) return -EFAULT;
     *ppos += len;
@@ -118,11 +133,13 @@ static struct file_operations list_m_fops = {
 static int __init list_m_init(void) {
   int ret = -EINVAL;
   pr_info("Linked list module loaded at 0x%p\n", list_m_init);
+  // Request dynamic major
   ret = alloc_chrdev_region(&major, 0, 1, "kamv_list");
   if (ret) {
     pr_err("Error: %d While allocating major number", ret);
     return ret;
   }
+  // Initialize and add the device with the attached file operations
   cdev_init(&cdevice, &list_m_fops);
   ret = cdev_add(&cdevice, major, 1);
   if (ret) {
@@ -140,7 +157,7 @@ static void __exit list_m_exit(void) {
   // Delete list elements
   list_for_each_entry_safe(cursor, temp, &head_node, list) {
     pr_info("Freeing node with data = %lu\n", cursor->magic);
-    
+
     // Not really needed since we are going to delete the whole list
     // But better to keep it in since we dont want dangling references
     list_del(&cursor->list);
