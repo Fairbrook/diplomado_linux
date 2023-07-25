@@ -1,4 +1,20 @@
 #include "rtc.h"
+/*
+| Dirección | Nombre del Registro | Descripción                     |
+|-----------|---------------------|---------------------------------|
+| 0x00      | Segundos            | Segundos (00-59)                |
+| 0x01      | Minutos             | Minutos (00-59)                 |
+| 0x02      | Hora                | Hora (formato 24 horas) (1-23)  |
+| 0x03      | Día de la semana    | Día de la semana (1-7)          |
+| 0x04      | Día del mes         | Día del mes (01-31)             |
+| 0x05      | Mes                 | Mes (01-12)                     |
+| 0x06      | Año                 | Año (00-99)                     |
+| 0x07      | Control             | Configuración de control        |
+| 0x0E      | Estado              | Estado                          |
+| 0x0F      | Aging Offset        | Ajuste de envejecimiento        |
+| 0x10      | Temperatura MSB     | Parte alta de la temperatura    |
+| 0x11      | Temperatura LSB     | Parte baja de la temperatura    |
+*/
 
 static int external_rtc_read_time(struct device *dev, struct rtc_time *time) {
   u8 buf[7], ret;

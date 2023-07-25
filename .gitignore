@@ -3,3 +3,4 @@ Session*
 out/
 .ccls-cache/
 test*
+modules/rtc/.rtc.o.d
