@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /dts-v1/;
+/plugin/;
 
-#include "am335x-boneblack.dts"
+#include <dt-bindings/pinctrl/am33xx.h>
 
 
 &am33xx_pinmux {

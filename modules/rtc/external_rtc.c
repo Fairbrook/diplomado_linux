@@ -1,20 +1,86 @@
 #include "rtc.h"
+#include <linux/rtc.h>
+
 /*
-| Dirección | Nombre del Registro | Descripción                     |
-|-----------|---------------------|---------------------------------|
-| 0x00      | Segundos            | Segundos (00-59)                |
-| 0x01      | Minutos             | Minutos (00-59)                 |
-| 0x02      | Hora                | Hora (formato 24 horas) (1-23)  |
-| 0x03      | Día de la semana    | Día de la semana (1-7)          |
-| 0x04      | Día del mes         | Día del mes (01-31)             |
-| 0x05      | Mes                 | Mes (01-12)                     |
-| 0x06      | Año                 | Año (00-99)                     |
-| 0x07      | Control             | Configuración de control        |
-| 0x0E      | Estado              | Estado                          |
-| 0x0F      | Aging Offset        | Ajuste de envejecimiento        |
-| 0x10      | Temperatura MSB     | Parte alta de la temperatura    |
-| 0x11      | Temperatura LSB     | Parte baja de la temperatura    |
-*/
+ * returns day of the week [0-6] 0=Sunday
+ */
+static int compute_wday(rtc_time *time, int yday) {
+  int ndays = time->tm_year * (365 % 7) + (time->tm_year - 1) / 4 -
+              (time->tm_year - 1) / 100 + (time->tm_year - 1) / 400 + yday;
+
+  /*
+   * 1/1/0000 may or may not have been a Sunday (if it ever existed at
+   * all) but assuming it was makes this calculation work correctly.
+   */
+  return ndays % 7;
+}
+
+static int calc_24_hours(u8 reg) {
+  int h12 = bcd2bin(reg);
+  u8 pm_or_h10 = get_pm_or_10h(reg);
+  u8 is_12h = is_12h_mode(reg);
+  return h12 + pm_or_h10 * (is_12h ? 12 : 20);
+}
+
+static void move_to_first_register(struct i2c_client *client) {
+  u8 buf[1] = {SECONDS_REGISTER};
+  i2c_master_send(client, buf, 1);
+}
+
+static void fill_time(u8 buf[7], struct rtc_time *time) {
+  time->tm_sec = bcd2bin(buf[0]);
+  time->tm_min = bcd2bin(buf[1]);
+  time->tm_hour = calc_24_hours(buf[2]);
+  time->tm_wday = buf[3];
+  time->tm_mday = bcd2bin(buf[4]);
+  time->tm_mon = bcd2bin(buf[5] & MONTH_MASK);
+  time->tm_year = bcd2bin(buf[6]) + is_year_overflowed(buf[5]) * 100;
+  time->tm_yday = rtc_year_days(time->tm_mday, time->tm_mon, time->tm_year);
+  time->tm_isdst = 0;
+}
+
+static void fill_buf(u8 *buf, struct rtc_time *time) {
+  buf[0] = bin2bcd(time->tm_sec);
+  buf[1] = bin2bcd(time->tm_min);
+  buf[2] = bin2bcd(time->tm_hour & 0x3F);
+  buf[3] = time->tm_wday;
+  buf[4] = bin2bcd(time->tm_mday);
+  buf[5] = bin2bcd(time->tm_mon) + (time->tm_year >= 100 ? CENTURY_MASK : 0);
+  buf[6] = bin2bcd(time->tm_year % 100);
+}
+
+static ssize_t atime_show(struct device *dev, struct device_attribute *attr,
+                          char *buf) {
+  return 0;
+}
+
+static ssize_t atime_store(struct device *dev, struct device_attribute *attr,
+                           const char *buf, size_t count) {
+  return count;
+}
+
+static ssize_t adate_show(struct device *dev, struct device_attribute *attr,
+                          char *buf) {
+  return 0;
+}
+
+static ssize_t adate_store(struct device *dev, struct device_attribute *attr,
+                           const char *buf, size_t count) {
+  return count;
+}
+
+static DEVICE_ATTR_RW(atime);
+static DEVICE_ATTR_RW(adate);
+
+static struct attribute *dev_attrs[] = {
+    &dev_attr_atime.attr,
+    &dev_attr_adate.attr,
+    NULL,
+};
+
+static struct attribute_group dev_attr_group = {
+    .attrs = dev_attrs,
+};
 
 static int external_rtc_read_time(struct device *dev, struct rtc_time *time) {
   u8 buf[7], ret;
@@ -25,32 +91,16 @@ static int external_rtc_read_time(struct device *dev, struct rtc_time *time) {
     dev_err(dev, "Error while reading rtc time");
     return ret;
   }
-  time->tm_sec = (buf[0] & 0xF) + ((buf[0] & 0xF0) >> 4) * 10;
-  time->tm_min = (buf[1] & 0xF) + ((buf[1] & 0xF0) >> 4) * 10;
-  time->tm_hour = buf[2];
-  time->tm_wday = buf[3];
-  time->tm_mday = (buf[4] & 0xF) + ((buf[4] & 0xF0) >> 4) * 10;
-  time->tm_mon = (buf[5] & 0xF) + ((buf[5] & 0x10) >> 4) * 10;
-  time->tm_year = (buf[6] & 0xF) + ((buf[6] & 0xF0) >> 4) * 10;
-  time->tm_yday = 0;
-  time->tm_isdst = 0;
-  dev_info(dev, "%02x %02x %02x %02x %02x %02x %02x", time->tm_sec,
-           time->tm_min, time->tm_hour, time->tm_wday, time->tm_mday,
-           time->tm_mon, time->tm_year);
+  fill_time(buf, time);
   return 0;
 }
 
 static int external_rtc_set_time(struct device *dev, struct rtc_time *time) {
   int ret;
-  u8 buf[8] = {0,
-               time->tm_sec,
-               time->tm_min,
-               time->tm_hour,
-               time->tm_wday,
-               time->tm_mday,
-               time->tm_mon,
-               time->tm_year};
+  u8 buf[8];
   struct i2c_client *client = to_i2c_client(dev);
+  buf[0] = SECONDS_REGISTER;
+  fill_buf(buf + 1, time);
   ret = i2c_master_send(client, buf, sizeof(buf));
   if (ret < 0) {
     dev_err(dev, "Error while setting rtc time");
@@ -69,7 +119,6 @@ static int external_rtc_driver_probe(struct i2c_client *client,
   struct external_rtc_device_data *dev_data;
   struct device *dev = &client->dev;
   int ret = 0;
-  const char *name;
 
   dev_data = devm_kzalloc(dev, sizeof(*dev_data), GFP_KERNEL);
   if (!dev_data) {
@@ -77,17 +126,13 @@ static int external_rtc_driver_probe(struct i2c_client *client,
     return -ENOMEM;
   }
 
-  //  if (of_property_read_string(dev->of_node, "label", &name)) {
-  //    dev_err(dev, "Missing label from device tree");
-  //    return -EINVAL;
-  //  }
-  //  strncpy(dev_data->label, name, sizeof(dev_data->label));
   dev_data->rtc = devm_rtc_allocate_device(dev);
   if (IS_ERR(dev_data->rtc)) {
     dev_err(dev, "Error while creating device");
     return PTR_ERR(dev_data->rtc);
   }
   dev_data->rtc->ops = &external_rtc_driver_ops;
+  rtc_add_group(dev_data->rtc, &dev_attr_group);
   ret = rtc_register_device(dev_data->rtc);
   if (ret) {
     dev_err(dev, "Error while registering device");
