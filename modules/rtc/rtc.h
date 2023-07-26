@@ -1,3 +1,4 @@
+#include <linux/bcd.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
@@ -6,7 +7,6 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/rtc.h>
-#include <linux/bcd.h>
 #define SECONDS_REGISTER 0x00
 #define WEEKDAY_REGISTER 0x03
 #define DATE_REGISTER 0x04
@@ -14,12 +14,9 @@
 #define PM_OR_10H_MASK 0x20
 #define MONTH_MASK 0x1F
 #define CENTURY_MASK 0x80
-#define is_12h_mode(reg) \
-    (((reg) & MODE_12H_MASK) >> 6)
-#define get_pm_or_10h(reg) \
-    (((reg) & PM_OR_10H_MASK) >> 5)
-#define is_year_overflowed(reg) \
-    (((reg) & CENTURY_MASK) >> 7)
+#define is_12h_mode(reg) (((reg)&MODE_12H_MASK) >> 6)
+#define get_pm_or_10h(reg) (((reg)&PM_OR_10H_MASK) >> 5)
+#define is_year_overflowed(reg) (((reg)&CENTURY_MASK) >> 7)
 
 /*
 | Dirección | Nombre del Registro | Descripción                     |
@@ -37,6 +34,28 @@
 | 0x10      | Temperatura MSB     | Parte alta de la temperatura    |
 | 0x11      | Temperatura LSB     | Parte baja de la temperatura    |
 */
+
+const char *days[] = {
+    "Sunday",   "Monday", "Tuesday",  "Wednesday",
+    "Thursday", "Friday", "Saturday",
+};
+
+struct custom_rtc_time {
+  int sec;
+  int min;
+  int hour;
+  int is_12h;
+  int pm;
+  int hour24;
+};
+
+struct custom_rtc_date {
+  int wday;
+  int mday;
+  int mon;
+  int year;
+  int century;
+};
 
 struct external_rtc_device_data {
   char label[20];

@@ -1,41 +1,28 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /dts-v1/;
 /plugin/;
 
-#include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/leds/common.h>
 #include <dt-bindings/pinctrl/am33xx.h>
 
-// /proc/device-tree/chosen/overlays
-&{/chosen} {
-    overlays{
-        myoverlay.kernel = __TIMESTAMP__;
-    };
-};
 
-&{/} {
-    parallel {
-		pinctrl-names = "default";
-		pinctrl-0 = <&parallel_leds>;
-        compatible = "kamv,parallel-leds";
-
-        port@0{
-            label = "port0";
-            led-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>,
-                <&gpio1 28 GPIO_ACTIVE_HIGH>,
-                <&gpio0 31 GPIO_ACTIVE_HIGH>,
-                <&gpio1 18 GPIO_ACTIVE_HIGH>;
-        };
-    };
-};
-
-// Registeres pins an configuration
 &am33xx_pinmux {
-    parallel_leds: parallel_leds {
+    i2c1_pins: pinmux_i2c1_pins {
         pinctrl-single,pins = <
-            AM33XX_PADCONF(AM335X_PIN_GPMC_WAIT0, PIN_OUTPUT_PULLDOWN, MUX_MODE7)
-            AM33XX_PADCONF(AM335X_PIN_GPMC_BEN1, PIN_OUTPUT_PULLDOWN, MUX_MODE7)
-            AM33XX_PADCONF(AM335X_PIN_GPMC_WPN, PIN_OUTPUT_PULLDOWN, MUX_MODE7)
-            AM33XX_PADCONF(AM335X_PIN_GPMC_A2, PIN_OUTPUT_PULLDOWN, MUX_MODE7)
+            AM33XX_PADCONF(AM335X_PIN_SPI0_D1, PIN_INPUT_PULLUP, MUX_MODE2) /* spi0_d1.12c1_sda */
+            AM33XX_PADCONF(AM335X_PIN_SPI0_CS0, PIN_INPUT_PULLUP, MUX_MODE2) /* spi0_cs0.12c1_scl */
         >;
+    };
+};
+
+&i2c1 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&i2c1_pins>;
+
+	status = "okay";
+	clock-frequency = <100000>;
+
+    externalrtc: rtc@68 {
+        compatible = "kamv,rtc";
+        reg = <0x68>;
     };
 };

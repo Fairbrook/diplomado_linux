@@ -1,21 +1,4 @@
 #include "rtc.h"
-#include <linux/rtc.h>
-
-struct custom_rtc_time {
-  int sec;
-  int min;
-  int hour;
-  int is_12h;
-  int pm;
-};
-
-struct custom_rtc_date {
-  int wday;
-  int mday;
-  int mon;
-  int year;
-  int century;
-};
 
 /*
  * returns day of the week [0-6] 0=Sunday
@@ -32,7 +15,10 @@ static int compute_wday(int year, int yday) {
 }
 
 static inline int calc_24_hours(struct custom_rtc_time *time) {
-  return time->hour + time->pm * (time->is_12h ? 12 : 20);
+  if (time->is_12h) {
+    return (time->hour % 12) + time->pm * 12;
+  }
+  return time->hour + time->pm * time->is_12h * 20;
 }
 
 static void move_to_first_reg(struct i2c_client *client) {
@@ -41,16 +27,17 @@ static void move_to_first_reg(struct i2c_client *client) {
 }
 
 static void move_to_date_reg(struct i2c_client *client) {
-  u8 buf[1] = {SECONDS_REGISTER};
+  u8 buf[1] = {WEEKDAY_REGISTER};
   i2c_master_send(client, buf, 1);
 }
 
 static void time_from_buf(u8 *buf, struct custom_rtc_time *time) {
   time->sec = bcd2bin(buf[0]);
   time->min = bcd2bin(buf[1]);
-  time->hour = bcd2bin(buf[2]);
+  time->hour = bcd2bin(buf[2] & 0x1F);
   time->is_12h = is_12h_mode(buf[2]);
   time->pm = get_pm_or_10h(buf[2]);
+  time->hour24 = calc_24_hours(time);
 }
 
 static void date_from_buf(u8 *buf, struct custom_rtc_date *date) {
@@ -65,7 +52,7 @@ static void custom2std(struct custom_rtc_date *c_date,
                        struct custom_rtc_time *c_time, struct rtc_time *time) {
   time->tm_sec = c_time->sec;
   time->tm_min = c_time->min;
-  time->tm_hour = calc_24_hours(c_time);
+  time->tm_hour = c_time->hour24;
   time->tm_wday = c_date->wday;
   time->tm_mday = c_date->mday;
   time->tm_mon = c_date->mon;
@@ -77,8 +64,8 @@ static void custom2std(struct custom_rtc_date *c_date,
 static void fill_time(u8 buf[7], struct rtc_time *time) {
   struct custom_rtc_date c_date;
   struct custom_rtc_time c_time;
-  date_from_buf(buf, &c_date);
   time_from_buf(buf, &c_time);
+  date_from_buf(buf + 3, &c_date);
   custom2std(&c_date, &c_time, time);
 }
 
@@ -106,11 +93,12 @@ static int read_time(struct i2c_client *client, struct custom_rtc_time *time) {
 
 static int write_time(struct i2c_client *client, struct custom_rtc_time *time) {
   u8 buf[4];
+  int ret;
   buf[0] = SECONDS_REGISTER;
   buf[1] = bin2bcd(time->sec);
-  buf[2] = bin2bcd(time->hour) | (time->pm << 5) | (time->is_12h << 6);
-  int ret;
-  ret = i2c_master_recv(client, buf, sizeof(buf));
+  buf[2] = bin2bcd(time->min);
+  buf[3] = bin2bcd(time->hour) | (time->pm << 5) | (time->is_12h << 6);
+  ret = i2c_master_send(client, buf, sizeof(buf));
   if (ret < 0) {
     return ret;
   }
@@ -125,28 +113,28 @@ static int read_date(struct i2c_client *client, struct custom_rtc_date *date) {
   if (ret < 0) {
     return ret;
   }
-  date_from_buf(buf, time);
+  date_from_buf(buf, date);
   return 0;
 }
 
 static int write_date(struct i2c_client *client, struct custom_rtc_date *date) {
   u8 buf[5];
-  buf[0] = WEEKDAY_REGISTER;
-  buf[1] = bin2bcd(date->wday);
-  buf[2] = bin2bcd(date->mday);
-  buf[3] = bin2bcd(date->mon);
-  buf[4] = bin2bcd(date->year);
   int ret;
-  ret = i2c_master_recv(client, buf, sizeof(buf));
+  buf[0] = WEEKDAY_REGISTER;
+  buf[1] = date->wday;
+  buf[2] = bin2bcd(date->mday);
+  buf[3] = bin2bcd(date->mon) | (date->century << 7);
+  buf[4] = bin2bcd(date->year);
+  ret = i2c_master_send(client, buf, sizeof(buf));
   if (ret < 0) {
     return ret;
   }
   return 0;
 }
 
-static ssize_t wtime_show(struct device *dev, struct device_attribute *attr,
+static ssize_t ctime_show(struct device *dev, struct device_attribute *attr,
                           char *buf) {
-  int ret, hour_offset = 0;
+  int ret;
   char *pm_label = "";
   struct i2c_client *client = to_i2c_client(dev->parent);
   struct custom_rtc_time time;
@@ -159,32 +147,35 @@ static ssize_t wtime_show(struct device *dev, struct device_attribute *attr,
       pm_label = "PM";
     else
       pm_label = "AM";
-  } else {
-    hour_offset = time.pm * 20;
   }
   return snprintf(buf, PAGE_SIZE, "%02d:%02d:%02d %s\n",
-                  time.hour + hour_offset, time.min, time.sec, pm_label);
+                  time.is_12h ? time.hour : time.hour24, time.min, time.sec,
+                  pm_label);
 }
 
-static ssize_t wtime_store(struct device *dev, struct device_attribute *attr,
+static ssize_t ctime_store(struct device *dev, struct device_attribute *attr,
                            const char *buf, size_t count) {
   struct custom_rtc_time time;
-  int pm = 0, hour, min, sec, ret;
+  int hour, min, sec;
   int ret = sscanf(buf, "%02d:%02d:%02d", &hour, &min, &sec);
   if (ret != 3) {
     dev_err(dev, "Invalid time format");
     return -EINVAL;
   }
   read_time(to_i2c_client(dev->parent), &time);
+  min %= 60;
+  sec %= 60;
+  hour %= 24;
   time.min = min;
   time.sec = sec;
   if (time.is_12h) {
     time.pm = hour > 12 ? 1 : 0;
     time.hour = hour > 12 ? hour - 12 : hour;
   } else {
-    time.pm = (time.hour / 20) & 1;
-    time.hour = time.hour % 20;
+    time.pm = (hour / 20) & 1;
+    time.hour = hour % 20;
   }
+  time.hour = time.hour;
   ret = write_time(to_i2c_client(dev->parent), &time);
   if (ret) {
     dev_err(dev, "Error while writing time");
@@ -193,7 +184,7 @@ static ssize_t wtime_store(struct device *dev, struct device_attribute *attr,
   return count;
 }
 
-static ssize_t wdate_show(struct device *dev, struct device_attribute *attr,
+static ssize_t cdate_show(struct device *dev, struct device_attribute *attr,
                           char *buf) {
   struct custom_rtc_date date;
   int ret;
@@ -206,7 +197,7 @@ static ssize_t wdate_show(struct device *dev, struct device_attribute *attr,
                   date.year + 1900 + (date.century * 100));
 }
 
-static ssize_t wdate_store(struct device *dev, struct device_attribute *attr,
+static ssize_t cdate_store(struct device *dev, struct device_attribute *attr,
                            const char *buf, size_t count) {
   struct custom_rtc_date date;
   int day, month, year, ret, yday;
@@ -215,13 +206,16 @@ static ssize_t wdate_store(struct device *dev, struct device_attribute *attr,
     dev_err(dev, "Invalid date format");
     return -EINVAL;
   }
+  month -= 1;
+  day %= 32;
+  month %= 12;
+  yday = rtc_year_days(day, month, year);
+  date.wday = compute_wday(year, yday);
   year -= 1900;
-  yday = rtc_year_days(day, month - 1, year);
   date.century = (year / 100) & 1;
   date.year = year % 100;
   date.mday = day;
-  date.mon = month - 1;
-  date.wday = compute_wday(year, yday);
+  date.mon = month;
   ret = write_date(to_i2c_client(dev->parent), &date);
   if (ret) {
     dev_err(dev, "Error while writing date");
@@ -246,6 +240,7 @@ static ssize_t mode_show(struct device *dev, struct device_attribute *attr,
 static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
                           const char *buf, size_t count) {
   int ret;
+  int temphour;
   struct i2c_client *client = to_i2c_client(dev->parent);
   struct custom_rtc_time time;
   ret = read_time(client, &time);
@@ -256,36 +251,105 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
   if (sysfs_streq(buf, "12h")) {
     if (time.is_12h)
       return count;
-    time.pm = time.hour > 12;
-    time.hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    time.pm = time.hour24 >= 12;
+    time.hour = time.hour24 > 12 ? time.hour24 - 12 : time.hour24;
+    time.is_12h = 1;
     ret = write_time(client, &time);
     if (ret) {
       dev_err(dev, "Error while writing time");
       return ret;
     }
+    return count;
   }
-  if (sysfs_streq(buf, "12h")) {
-    if (time.is_12h)
+  if (sysfs_streq(buf, "24h")) {
+    if (!time.is_12h)
       return count;
-    time.pm = time.hour > 12;
-    time.hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    temphour = time.hour + (time.pm * 12);
+    time.pm = (temphour / 20) & 1;
+    time.hour = temphour % 20;
+    time.is_12h = 0;
     ret = write_time(client, &time);
     if (ret) {
       dev_err(dev, "Error while writing time");
       return ret;
     }
+    return count;
   }
+
+  dev_err(dev, "Invalid mode");
+  return -EINVAL;
 }
 
-static DEVICE_ATTR_RW(wtime);
-static DEVICE_ATTR_RW(wdate);
+static ssize_t meridiem_show(struct device *dev, struct device_attribute *attr,
+                             char *buf) {
+  int ret;
+  struct i2c_client *client = to_i2c_client(dev->parent);
+  struct custom_rtc_time time;
+  ret = read_time(client, &time);
+  if (ret) {
+    dev_err(dev, "Error while reading time");
+    return ret;
+  }
+  return snprintf(buf, PAGE_SIZE, "%s\n", time.hour24 >= 12 ? "PM" : "AM");
+}
+
+static ssize_t meridiem_store(struct device *dev, struct device_attribute *attr,
+                              const char *buf, size_t count) {
+  int ret, meridiem = 0, valid_input = 0;
+  struct i2c_client *client = to_i2c_client(dev->parent);
+  struct custom_rtc_time time;
+  ret = read_time(client, &time);
+  if (ret) {
+    dev_err(dev, "Error while reading time");
+    return ret;
+  }
+  if (sysfs_streq(buf, "pm")) {
+    meridiem = 1;
+    valid_input = 1;
+  }
+  if (sysfs_streq(buf, "am")) {
+    meridiem = 0;
+    valid_input = 1;
+  }
+  if (!valid_input) {
+    dev_err(dev, "Invalid meridiem");
+    return -EINVAL;
+  }
+  if (!time.is_12h) {
+    time.hour = time.hour24 > 12 ? time.hour24 - 12 : time.hour24;
+  }
+  time.pm = meridiem;
+  time.is_12h = true;
+  ret = write_time(client, &time);
+  if (ret) {
+    dev_err(dev, "Error while writing time");
+    return ret;
+  }
+  return count;
+}
+
+static ssize_t wday_show(struct device *dev, struct device_attribute *attr,
+                         char *buf) {
+  int ret;
+  struct i2c_client *client = to_i2c_client(dev->parent);
+  struct custom_rtc_date date;
+  ret = read_date(client, &date);
+  if (ret) {
+    dev_err(dev, "Error while reading time");
+    return ret;
+  }
+  return snprintf(buf, PAGE_SIZE, "%s\n", days[date.wday]);
+}
+
+static DEVICE_ATTR_RW(ctime);
+static DEVICE_ATTR_RW(cdate);
+static DEVICE_ATTR_RO(wday);
 static DEVICE_ATTR_RW(mode);
 static DEVICE_ATTR_RW(meridiem);
 
 static struct attribute *dev_attrs[] = {
-    &dev_attr_wtime.attr,
-    &dev_attr_wdate.attr,
-    NULL,
+    &dev_attr_ctime.attr,    &dev_attr_cdate.attr, &dev_attr_mode.attr,
+    &dev_attr_meridiem.attr, &dev_attr_wday.attr,  NULL,
 };
 
 static struct attribute_group dev_attr_group = {
