@@ -253,6 +253,28 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr,
     dev_err(dev, "Error while reading time");
     return ret;
   }
+  if (sysfs_streq(buf, "12h")) {
+    if (time.is_12h)
+      return count;
+    time.pm = time.hour > 12;
+    time.hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    ret = write_time(client, &time);
+    if (ret) {
+      dev_err(dev, "Error while writing time");
+      return ret;
+    }
+  }
+  if (sysfs_streq(buf, "12h")) {
+    if (time.is_12h)
+      return count;
+    time.pm = time.hour > 12;
+    time.hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    ret = write_time(client, &time);
+    if (ret) {
+      dev_err(dev, "Error while writing time");
+      return ret;
+    }
+  }
 }
 
 static DEVICE_ATTR_RW(wtime);
