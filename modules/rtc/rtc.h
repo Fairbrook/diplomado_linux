@@ -40,6 +40,7 @@ const char *days[] = {
     "Thursday", "Friday", "Saturday",
 };
 
+// Struct for storing only the time
 struct custom_rtc_time {
   int sec;
   int min;
@@ -49,6 +50,7 @@ struct custom_rtc_time {
   int hour24;
 };
 
+// Struct for storing only the date
 struct custom_rtc_date {
   int wday;
   int mday;
@@ -57,11 +59,9 @@ struct custom_rtc_date {
   int century;
 };
 
+// Client data from the device
 struct external_rtc_device_data {
   char label[20];
+  u8 last_recv[8];
   struct rtc_device *rtc;
-};
-
-struct parallel_driver_data {
-  struct class *driv_class;
 };

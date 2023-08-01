@@ -19,10 +19,12 @@
     pinctrl-0 = <&i2c1_pins>;
 
 	status = "okay";
+    // Frecuency supported from documentation
 	clock-frequency = <100000>;
 
     externalrtc: rtc@68 {
         compatible = "kamv,rtc";
+        // Device address from DS32 documentation
         reg = <0x68>;
     };
 };
