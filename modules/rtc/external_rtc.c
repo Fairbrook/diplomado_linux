@@ -23,7 +23,7 @@ static inline int calc_24_hours(struct custom_rtc_time *time) {
   if (time->is_12h) {
     return (time->hour % 12) + time->pm * 12;
   }
-  return time->hour + time->pm * time->is_12h * 20;
+  return time->hour + time->pm * 20;
 }
 
 /*
